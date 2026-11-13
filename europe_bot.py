@@ -10,7 +10,7 @@ from pathlib import Path
 BASE = Path(__file__).parent
 MODE = os.environ.get("MODE", "dry").strip().lower()
 MAX_PER_DAY = int(os.environ.get("MAX_PER_DAY", "8"))
-COUNTRIES = [c.strip().upper() for c in os.environ.get("COUNTRIES", "PT,ES,IT,GR,HR,MT,CY").split(",") if c.strip()]
+COUNTRIES = [c.strip().upper() for c in os.environ.get("COUNTRIES", "PT,ES,GR,HR,MT,CY").split(",") if c.strip()]
 GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 APPLICANT_NAME = os.environ.get("APPLICANT_NAME", "Applicant")
@@ -49,8 +49,8 @@ def overpass_query(country):
     return f"""[out:json][timeout:120];
 area["ISO3166-1"="{country}"][admin_level=2]->.a;
 (
-  nwr["tourism"~"^(hotel|guest_house|hostel|resort|apartment)$"]["email"](area.a);
-  nwr["amenity"~"^(restaurant|cafe|bar|pub)$"]["email"](area.a);
+  nwr["tourism"~"^(hotel|resort)$"]["email"](area.a);
+  nwr["amenity"~"^(restaurant|cafe|bar)$"]["email"](area.a);
 );
 out tags 3000;"""
 
@@ -81,14 +81,24 @@ def discover(con, country, fetch=fetch_overpass):
     return added
 
 
+BAD_KINDS = {"hostel", "guest_house", "apartment", "pub"}
+FREE_MAIL = {"gmail.com", "hotmail.com", "hotmail.pt", "outlook.com", "yahoo.com", "yahoo.es", "live.com",
+             "sapo.pt", "icloud.com", "libero.it", "mail.com", "gmx.com"}
+
+
+def is_free(email):
+    return email.rsplit("@", 1)[-1] in FREE_MAIL
+
+
 def pick_candidates(con, exclude, n):
     """Round-robin entre pays, au hasard dans chaque pays."""
     pools = {}
     for c in COUNTRIES:
         rows = con.execute("""SELECT email,name,country,city,kind FROM candidates
                               WHERE country=? AND email NOT IN (SELECT email FROM sent)""", (c,)).fetchall()
-        rows = [r for r in rows if r[0] not in exclude]
+        rows = [r for r in rows if r[0] not in exclude and r[4] not in BAD_KINDS]
         random.shuffle(rows)
+        rows.sort(key=lambda r: is_free(r[0]), reverse=True)  # adresses pro en dernier => pop() les prend d'abord
         pools[c] = rows
     chosen = []
     while len(chosen) < n and any(pools.values()):
