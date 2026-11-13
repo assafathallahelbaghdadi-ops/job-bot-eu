@@ -1,0 +1,39 @@
+name: job-bot-eu
+
+on:
+  schedule:
+    - cron: "30 15 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "dry (simulation) ou real (envoi reel)"
+        default: "dry"
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run bot
+        env:
+          MODE: ${{ github.event.inputs.mode || vars.BOT_MODE || 'dry' }}
+          MAX_PER_DAY: ${{ vars.MAX_PER_DAY || '8' }}
+          COUNTRIES: ${{ vars.COUNTRIES || 'PT,ES,IT,GR,HR,MT,CY' }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          APPLICANT_NAME: ${{ secrets.APPLICANT_NAME }}
+          REPLY_TO: ${{ secrets.REPLY_TO }}
+          REPORT_TO: ${{ secrets.REPORT_TO }}
+        run: python europe_bot.py
+      - name: Save bot.db
+        run: |
+          git config user.name "job-bot"
+          git config user.email "job-bot@users.noreply.github.com"
+          git add bot.db || true
+          git diff --cached --quiet || (git commit -m "update bot.db" && git push)
