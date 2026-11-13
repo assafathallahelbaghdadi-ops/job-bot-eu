@@ -24,7 +24,7 @@ jobs:
         env:
           MODE: ${{ github.event.inputs.mode || vars.BOT_MODE || 'dry' }}
           MAX_PER_DAY: ${{ vars.MAX_PER_DAY || '8' }}
-          COUNTRIES: ${{ vars.COUNTRIES || 'PT,ES,IT,GR,HR,MT,CY' }}
+          COUNTRIES: ${{ vars.COUNTRIES || 'PT,ES,GR,HR,MT,CY' }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           APPLICANT_NAME: ${{ secrets.APPLICANT_NAME }}
