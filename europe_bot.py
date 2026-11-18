@@ -103,6 +103,43 @@ def rank(email):
     return tier + (3 if is_free(email) else 0)
 
 
+BAD_DOMAINS = []
+_DNS_CACHE = {}
+
+
+def domain_ok(domain):
+    """False seulement si le domaine n'existe pas ou n'a ni MX ni A/AAAA. Erreur reseau => on laisse passer."""
+    if domain in _DNS_CACHE:
+        return _DNS_CACHE[domain]
+    try:
+        import dns.resolver
+    except ImportError:
+        return True
+    res = dns.resolver.Resolver()
+    res.lifetime = 5
+    ok = True
+    try:
+        res.resolve(domain, "MX")
+    except dns.resolver.NXDOMAIN:
+        ok = False
+    except dns.resolver.NoAnswer:
+        ok = False
+        for rtype in ("A", "AAAA"):
+            try:
+                res.resolve(domain, rtype)
+                ok = True
+                break
+            except (dns.resolver.NoAnswer, dns.resolver.NXDOMAIN):
+                pass
+            except Exception:
+                ok = True
+                break
+    except Exception:
+        ok = True
+    _DNS_CACHE[domain] = ok
+    return ok
+
+
 def pick_candidates(con, exclude, n):
     """Round-robin entre pays, au hasard dans chaque pays."""
     pools = {}
@@ -118,7 +155,13 @@ def pick_candidates(con, exclude, n):
     while len(chosen) < n and any(pools.values()):
         for c in COUNTRIES:
             if pools[c] and len(chosen) < n:
-                chosen.append(pools[c].pop())
+                cand = pools[c].pop()
+                if not domain_ok(cand[0].rsplit("@", 1)[-1]):
+                    con.execute("DELETE FROM candidates WHERE email=?", (cand[0],))
+                    con.commit()
+                    BAD_DOMAINS.append(cand[0])
+                    continue
+                chosen.append(cand)
     return chosen
 
 
@@ -227,6 +270,8 @@ def main(fetch=fetch_overpass, sleep=time.sleep):
     lines = [f"Rapport du {today} - mode: {MODE.upper()}", cfg, "",
              f"Envoyes: {len(sent)} | erreurs: {len(errors)}", "",
              "Reservoir restant par pays: " + ", ".join(f"{c}={n}" for c, n in pool.items()), ""]
+    if BAD_DOMAINS:
+        lines += [f"Adresses ignorees (domaine inexistant): {len(BAD_DOMAINS)}", ""]
     if log:
         lines += log + [""]
     if sent:
